@@ -1,0 +1,33 @@
+.app {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  height: 100vh;
+  font-size: 8pt;
+  text-align: center;
+
+  @media (min-aspect-ratio: 3 / 2) {
+    grid-template-rows: 1fr;
+    grid-template-columns: 0.5fr 1fr;
+  }
+}
+
+.editor {
+  font-size: 8pt;
+
+  & > :first-child {
+    color: darkgrey;
+  }
+
+  & *:focus {
+    outline: 2px white;
+  }
+
+  & span {
+    padding: 2px 0px;
+  }
+}
+
+.canvas {
+  display: grid;
+  grid-template-columns: repeat(50, 1fr);
+}
