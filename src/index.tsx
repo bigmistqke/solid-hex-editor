@@ -77,6 +77,9 @@ const isAscii = (char: unknown): char is string => {
 function floor(value: number, floor: number) {
   return Math.floor(value / floor) * floor
 }
+function ceil(value: number, ceil: number) {
+  return Math.ceil(value / ceil) * ceil
+}
 
 export function HexEditor(
   props: Omit<ComponentProps<'div'>, 'style'> & {
@@ -131,7 +134,13 @@ export function HexEditor(
         scrollToSelection={scrollToSelection}
         onPointerUp={event => {
           const selection = getSelection(event.currentTarget)
-          if (floor(selection.start, 2) !== floor(selection.end, 2)) return
+          if (floor(selection.start, 2) !== ceil(selection.end, 2)) {
+            select(event.currentTarget, {
+              start: floor(selection.start, 2),
+              end: ceil(selection.end, 2),
+            })
+            return
+          }
           if (event.target instanceof HTMLElement) {
             select(event.target, { start: 0, end: 2 })
           }
@@ -220,11 +229,11 @@ export function HexEditor(
           }
         }}
         onArrowDown={(event, selection) => {
-          const start = floor(selection.start, 2) + 16 * 2
-          if (start <= props.array.length * 2) {
+          const end = floor(selection.end, 2) + 16 * 2
+          if (end <= props.array.length * 2) {
             select(event.currentTarget, {
-              start,
-              end: start + 2,
+              start: end - 2,
+              end,
             })
           }
         }}
@@ -254,7 +263,7 @@ export function HexEditor(
         }}
         onPointerUp={event => {
           const selection = getSelection(event.currentTarget)
-          if (floor(selection.start, 2) !== floor(selection.end, 2)) return
+          if (floor(selection.start, 2) !== ceil(selection.end, 2)) return
           if (event.target instanceof HTMLElement) {
             select(event.target, { start: 0, end: 1 })
           }
@@ -287,7 +296,7 @@ export function HexEditor(
           }
         }}
         onArrowRight={(event, selection) => {
-          const end = selection.start + 2
+          const end = selection.end + 1
           if (end <= props.array.length) {
             select(event.currentTarget, {
               start: end - 1,
@@ -305,11 +314,11 @@ export function HexEditor(
           }
         }}
         onArrowDown={(event, selection) => {
-          const start = selection.start + 16
-          if (start <= props.array.length) {
+          const end = selection.end + 16
+          if (end <= props.array.length) {
             select(event.currentTarget, {
-              start,
-              end: start + 1,
+              end,
+              start: end - 1,
             })
           }
         }}
