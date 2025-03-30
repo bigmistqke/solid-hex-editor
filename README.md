@@ -8,6 +8,12 @@
 
 minimal hex-editor
 
+
+
+https://github.com/user-attachments/assets/88b8874d-63f7-4a2a-97d4-e504385deee4
+
+
+
 ## Quick start
 
 Install it:
