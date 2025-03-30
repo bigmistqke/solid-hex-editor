@@ -67,11 +67,12 @@ function getSelection(element: HTMLElement): RangeVector {
 function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus?: number }) {
   const selection = document.getSelection()!
   const range = document.createRange()
-  selection.removeAllRanges()
 
   const resultAnchor = getNodeAndOffsetAtIndex(element, anchor)
   range.setStart(resultAnchor.node, resultAnchor.offset)
   range.setEnd(resultAnchor.node, resultAnchor.offset)
+
+  selection.empty()
   selection.addRange(range)
 
   if (focus !== undefined) {
@@ -144,67 +145,10 @@ export function HexEditor(
       </div>
       <GridEditor
         array={props.array}
+        onArrayUpdate={props.onArrayUpdate}
         cellSize={2}
         render={value => value.toString(16).padStart(2, '0').toUpperCase()}
         scrollToSelection={scrollToSelection}
-        onPointerUp={event => {
-          const selection = getSelection(event.currentTarget)
-
-          const start = selection.anchor < selection.focus ? selection.anchor : selection.focus
-          const end = selection.anchor > selection.focus ? selection.anchor : selection.focus
-
-          if (floor(start, 2) !== floor(end, 2)) {
-            select(event.currentTarget, {
-              anchor:
-                selection.anchor < selection.focus
-                  ? floor(selection.anchor, 2)
-                  : ceil(selection.anchor, 2),
-              focus:
-                selection.anchor > selection.focus
-                  ? floor(selection.focus, 2)
-                  : ceil(selection.focus, 2),
-            })
-          } else if (event.target instanceof HTMLElement) {
-            select(event.target, { anchor: 0, focus: 2 })
-          }
-        }}
-        onCopy={(event, selection) => {
-          const array = unwrap(props.array).slice(
-            Math.floor(selection.start / 2),
-            Math.ceil(selection.end / 2),
-          )
-          event.clipboardData!.setData('text/json', JSON.stringify(Array.from(array)))
-        }}
-        onPaste={(event, selection) => {
-          const index = Math.floor(selection.start / 2)
-          const data = JSON.parse(event.clipboardData!.getData('text/json'))
-          if (Array.isArray(data)) {
-            batch(() => {
-              data.forEach((value, offset) => {
-                props.onArrayUpdate(index + offset, value)
-              })
-            })
-            select(event.currentTarget, {
-              anchor: index * 2,
-              focus: index * 2 + data.length * 2,
-            })
-          }
-        }}
-        onDelete={(event, selection) => {
-          batch(() => {
-            for (
-              let index = Math.floor(selection.start / 2);
-              index < Math.ceil(selection.end / 2);
-              index++
-            ) {
-              props.onArrayUpdate(index, 0)
-            }
-          })
-          select(event.currentTarget, {
-            anchor: selection.start,
-            focus: selection.end,
-          })
-        }}
         onInsert={(event, selection) => {
           const data = event.data?.toLowerCase()
 
@@ -235,48 +179,9 @@ export function HexEditor(
       <GridEditor
         cellSize={1}
         array={props.array}
+        onArrayUpdate={props.onArrayUpdate}
         render={value => (value > 32 && value < 127 ? String.fromCharCode(value) : '.')}
         scrollToSelection={scrollToSelection}
-        onCopy={(event, selection) => {
-          const array = unwrap(props.array).slice(
-            Math.floor(selection.start),
-            Math.ceil(selection.end),
-          )
-          event.clipboardData!.setData('text/json', JSON.stringify(Array.from(array)))
-        }}
-        onPaste={(event, selection) => {
-          const index = Math.floor(selection.start)
-          const data = JSON.parse(event.clipboardData!.getData('text/json'))
-          if (Array.isArray(data)) {
-            batch(() => {
-              data.forEach((value, offset) => {
-                props.onArrayUpdate(index + offset, value)
-              })
-            })
-            select(event.currentTarget, {
-              anchor: index,
-              focus: index + data.length * 1,
-            })
-          }
-        }}
-        onPointerUp={event => {
-          const selection = getSelection(event.currentTarget)
-          if (floor(selection.start, 2) !== ceil(selection.end, 2)) return
-          if (event.target instanceof HTMLElement) {
-            select(event.target, { anchor: 0, focus: 1 })
-          }
-        }}
-        onDelete={(event, selection) => {
-          batch(() => {
-            for (let index = selection.start; index < selection.end; index++) {
-              props.onArrayUpdate(index, 0)
-            }
-          })
-          select(event.currentTarget, {
-            anchor: selection.start,
-            focus: selection.end,
-          })
-        }}
         onInsert={(event, selection) => {
           if (isAscii(event.data)) {
             const index = Math.floor(selection.start)
@@ -299,14 +204,11 @@ type GridEventHandler<T> = (
 
 function GridEditor(props: {
   array: Array<number> | Uint8Array
+  onArrayUpdate(index: number, value: number): void
   cellSize: number
   render(value: number): string
   scrollToSelection(): void
-  onCopy: GridEventHandler<ClipboardEvent>
-  onPaste: GridEventHandler<ClipboardEvent>
-  onDelete: GridEventHandler<InputEvent>
   onInsert: GridEventHandler<InputEvent>
-  onPointerUp: GridEventHandler<PointerEvent>
 }) {
   function onArrowLeft(
     event: KeyboardEvent & { currentTarget: HTMLDivElement },
@@ -319,31 +221,37 @@ function GridEditor(props: {
           anchor: selection.focus,
           focus: focus - props.cellSize,
         })
-      } else if (focus >= 0) {
+        return
+      }
+
+      if (focus >= 0) {
         select(event.currentTarget, {
           anchor: selection.anchor,
           focus,
         })
       }
-    } else {
-      if (selection.anchor > selection.focus) {
-        const focus = floor(selection.focus, props.cellSize) - props.cellSize
 
-        if (focus >= 0) {
-          select(event.currentTarget, {
-            anchor: focus + props.cellSize,
-            focus,
-          })
-        }
-      } else {
-        const anchor = floor(selection.anchor, props.cellSize) - props.cellSize
-        if (anchor >= 0) {
-          select(event.currentTarget, {
-            focus: anchor + props.cellSize,
-            anchor,
-          })
-        }
+      return
+    }
+
+    if (selection.anchor > selection.focus) {
+      const focus = floor(selection.focus, props.cellSize) - props.cellSize
+
+      if (focus >= 0) {
+        select(event.currentTarget, {
+          anchor: focus + props.cellSize,
+          focus,
+        })
       }
+      return
+    }
+
+    const anchor = floor(selection.anchor, props.cellSize) - props.cellSize
+    if (anchor >= 0) {
+      select(event.currentTarget, {
+        focus: anchor + props.cellSize,
+        anchor,
+      })
     }
   }
   function onArrowRight(
@@ -451,16 +359,49 @@ function GridEditor(props: {
       contentEditable
       onPointerUp={event => {
         const selection = getSelection(event.currentTarget)
-        props.onPointerUp(event, selection)
+
+        const start = selection.anchor < selection.focus ? selection.anchor : selection.focus
+        const end = selection.anchor > selection.focus ? selection.anchor : selection.focus
+
+        if (floor(start, props.cellSize) !== floor(end, props.cellSize)) {
+          select(event.currentTarget, {
+            anchor:
+              selection.anchor < selection.focus
+                ? floor(selection.anchor, props.cellSize)
+                : ceil(selection.anchor, props.cellSize),
+            focus:
+              selection.anchor > selection.focus
+                ? floor(selection.focus, props.cellSize)
+                : ceil(selection.focus, props.cellSize),
+          })
+        } else if (event.target instanceof HTMLElement) {
+          select(event.target, { anchor: 0, focus: props.cellSize })
+        }
       }}
       onCopy={event => {
         event.preventDefault()
         const selection = getSelection(event.currentTarget)
-        props.onCopy(event, selection)
+        const array = unwrap(props.array).slice(
+          Math.floor(selection.start / props.cellSize),
+          Math.ceil(selection.end / props.cellSize),
+        )
+        event.clipboardData!.setData('text/json', JSON.stringify(Array.from(array)))
       }}
       onPaste={event => {
         const selection = getSelection(event.currentTarget)
-        props.onPaste(event, selection)
+        const index = Math.floor(selection.start / props.cellSize)
+        const data = JSON.parse(event.clipboardData!.getData('text/json'))
+        if (Array.isArray(data)) {
+          batch(() => {
+            data.forEach((value, offset) => {
+              props.onArrayUpdate(index + offset, value)
+            })
+          })
+          select(event.currentTarget, {
+            anchor: index * props.cellSize,
+            focus: index * props.cellSize + data.length * props.cellSize,
+          })
+        }
       }}
       onKeyDown={event => {
         const selection = getSelection(event.currentTarget)
@@ -500,7 +441,19 @@ function GridEditor(props: {
             break
           }
           case 'deleteContentBackward': {
-            props.onDelete(e, selection)
+            batch(() => {
+              for (
+                let index = Math.floor(selection.start / props.cellSize);
+                index < Math.ceil(selection.end / props.cellSize);
+                index++
+              ) {
+                props.onArrayUpdate(index, 0)
+              }
+            })
+            select(e.currentTarget, {
+              anchor: selection.start,
+              focus: selection.end,
+            })
           }
         }
       }}
