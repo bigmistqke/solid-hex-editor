@@ -2,6 +2,53 @@ import { Repeat } from '@solid-primitives/range'
 import { batch, ComponentProps, createMemo, JSX, splitProps } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
+interface SelectionOffsets {
+  start: number
+  end: number
+  anchor: number
+  focus: number
+}
+
+function getSelection(element: HTMLElement): SelectionOffsets {
+  const selection = document.getSelection()
+
+  if (!selection || selection.rangeCount === 0) {
+    return { start: 0, end: 0, anchor: 0, focus: 0 }
+  }
+
+  const range = document.createRange()
+  range.selectNodeContents(element)
+  range.setEnd(selection.anchorNode!, selection.anchorOffset)
+  const anchor = range.toString().length
+
+  range.setEnd(selection.focusNode!, selection.focusOffset)
+  const focus = range.toString().length
+
+  return {
+    start: anchor < focus ? anchor : focus,
+    end: anchor > focus ? anchor : focus,
+    anchor,
+    focus,
+  }
+}
+
+function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus?: number }) {
+  const selection = document.getSelection()!
+  const range = document.createRange()
+
+  const resultAnchor = getNodeAndOffsetAtIndex(element, anchor)
+  range.setStart(resultAnchor.node, resultAnchor.offset)
+  range.setEnd(resultAnchor.node, resultAnchor.offset)
+
+  selection.empty()
+  selection.addRange(range)
+
+  if (focus !== undefined) {
+    const resultFocus = getNodeAndOffsetAtIndex(element, focus)
+    selection.extend(resultFocus.node, resultFocus.offset)
+  }
+}
+
 function getNodeAndOffsetAtIndex(element: Node, index: number) {
   const nodes = element.childNodes
 
@@ -28,59 +75,6 @@ function getNodeAndOffsetAtIndex(element: Node, index: number) {
   throw `Could not find node`
 }
 
-type RangeVector = { start: number; end: number; anchor: number; focus: number }
-
-function getSelection(element: HTMLElement): RangeVector {
-  const selection = document.getSelection()
-
-  if (!selection || selection.rangeCount === 0) {
-    return { start: 0, end: 0, anchor: 0, focus: 0 }
-  }
-
-  const documentRange = selection.getRangeAt(0)
-
-  // Create a range that spans from the start of the contenteditable to the selection start
-  const elementRange = document.createRange()
-  elementRange.selectNodeContents(element)
-  elementRange.setEnd(documentRange.startContainer, documentRange.startOffset)
-
-  // The length of the elementRange gives the start offset relative to the whole content
-  const start = elementRange.toString().length
-  const end = start + documentRange.toString().length
-
-  const anchorRange = document.createRange()
-  anchorRange.selectNodeContents(element)
-  anchorRange.setEnd(selection.anchorNode!, selection.anchorOffset)
-
-  const focusRange = document.createRange()
-  focusRange.selectNodeContents(element)
-  focusRange.setEnd(selection.focusNode!, selection.focusOffset)
-
-  return {
-    start,
-    end,
-    anchor: anchorRange.toString().length,
-    focus: focusRange.toString().length,
-  }
-}
-
-function select(element: HTMLElement, { anchor, focus }: { anchor: number; focus?: number }) {
-  const selection = document.getSelection()!
-  const range = document.createRange()
-
-  const resultAnchor = getNodeAndOffsetAtIndex(element, anchor)
-  range.setStart(resultAnchor.node, resultAnchor.offset)
-  range.setEnd(resultAnchor.node, resultAnchor.offset)
-
-  selection.empty()
-  selection.addRange(range)
-
-  if (focus !== undefined) {
-    const resultFocus = getNodeAndOffsetAtIndex(element, focus)
-    selection.extend(resultFocus.node, resultFocus.offset)
-  }
-}
-
 const hexValues = Array.from({ length: 16 }, (_, i) => i.toString(16))
 const isHex = (char: string | undefined) => char && hexValues.includes(char)
 const isAscii = (char: unknown): char is string => {
@@ -89,10 +83,10 @@ const isAscii = (char: unknown): char is string => {
   return charCode > 32 && charCode < 127
 }
 
-function floor(value: number, floor: number) {
+function floorSnap(value: number, floor: number) {
   return Math.floor(value / floor) * floor
 }
-function ceil(value: number, ceil: number) {
+function ceilSnap(value: number, ceil: number) {
   return Math.ceil(value / ceil) * ceil
 }
 
@@ -121,7 +115,7 @@ export function HexEditor(
     }
   }
 
-  const offsetCharCount = createMemo(() => ceil(props.array.length, 16).toString(16).length)
+  const offsetCharCount = createMemo(() => ceilSnap(props.array.length, 16).toString(16).length)
 
   return (
     <div
@@ -149,9 +143,9 @@ export function HexEditor(
       </div>
       <GridEditor
         name="hex"
+        cellSize={2}
         array={props.array}
         onArrayUpdate={props.onArrayUpdate}
-        cellSize={2}
         render={value => value.toString(16).padStart(2, '0').toUpperCase()}
         scrollToSelection={scrollToSelection}
         onInsert={(event, selection) => {
@@ -168,7 +162,7 @@ export function HexEditor(
             parseInt(offset === 0 ? data + hex.slice(1) : hex.slice(0, 1) + data, 16),
           )
 
-          if (floor(selection.start + 1, 2) === selection.start) {
+          if (floorSnap(selection.start + 1, 2) === selection.start) {
             select(event.currentTarget, {
               anchor: selection.start + 1,
               focus: selection.start + 2,
@@ -203,27 +197,22 @@ export function HexEditor(
   )
 }
 
-type GridEventHandler<T> = (
-  event: T & { currentTarget: HTMLDivElement },
-  selection: RangeVector,
-) => void
-
 function GridEditor(props: {
-  array: Array<number> | Uint8Array
   name: string
-  onArrayUpdate(index: number, value: number): void
   cellSize: number
+  array: Array<number> | Uint8Array
+  onArrayUpdate(index: number, value: number): void
+  onInsert(event: InputEvent & { currentTarget: HTMLDivElement }, selection: SelectionOffsets): void
   render(value: number): string
   scrollToSelection(): void
-  onInsert: GridEventHandler<InputEvent>
 }) {
   function onArrowHorizontal(
     event: KeyboardEvent & { currentTarget: HTMLDivElement },
-    selection: RangeVector,
+    selection: SelectionOffsets,
     direction: 1 | -1,
   ) {
     if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) + props.cellSize * direction
+      const focus = floorSnap(selection.focus, props.cellSize) + props.cellSize * direction
 
       if (focus === selection.anchor) {
         select(event.currentTarget, {
@@ -247,7 +236,7 @@ function GridEditor(props: {
     }
 
     if (direction === -1) {
-      const start = floor(selection.start, props.cellSize) - props.cellSize
+      const start = floorSnap(selection.start, props.cellSize) - props.cellSize
       if (start >= 0) {
         select(event.currentTarget, {
           anchor: start,
@@ -255,7 +244,7 @@ function GridEditor(props: {
         })
       }
     } else {
-      const end = floor(selection.end, props.cellSize) + props.cellSize
+      const end = floorSnap(selection.end, props.cellSize) + props.cellSize
       if (end <= props.array.length * props.cellSize) {
         select(event.currentTarget, {
           anchor: end - props.cellSize,
@@ -267,11 +256,11 @@ function GridEditor(props: {
 
   function onArrowVertical(
     event: KeyboardEvent & { currentTarget: HTMLDivElement },
-    selection: RangeVector,
+    selection: SelectionOffsets,
     direction: -1 | 1,
   ) {
     if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) + 16 * props.cellSize * direction
+      const focus = floorSnap(selection.focus, props.cellSize) + 16 * props.cellSize * direction
 
       const shouldFlip =
         (selection.anchor < selection.focus && selection.anchor > focus) ||
@@ -291,7 +280,7 @@ function GridEditor(props: {
     }
 
     if (direction === -1) {
-      const anchor = floor(selection.start - 16 * props.cellSize, props.cellSize)
+      const anchor = floorSnap(selection.start - 16 * props.cellSize, props.cellSize)
       if (anchor > 0) {
         select(event.currentTarget, {
           anchor: anchor,
@@ -299,7 +288,7 @@ function GridEditor(props: {
         })
       }
     } else {
-      const focus = floor(selection.end + 16 * props.cellSize, props.cellSize)
+      const focus = floorSnap(selection.end + 16 * props.cellSize, props.cellSize)
       if (focus < props.array.length * props.cellSize) {
         select(event.currentTarget, {
           anchor: focus - props.cellSize,
@@ -324,16 +313,16 @@ function GridEditor(props: {
         const start = selection.anchor < selection.focus ? selection.anchor : selection.focus
         const end = selection.anchor > selection.focus ? selection.anchor : selection.focus
 
-        if (floor(start, props.cellSize) !== floor(end, props.cellSize)) {
+        if (floorSnap(start, props.cellSize) !== floorSnap(end, props.cellSize)) {
           select(event.currentTarget, {
             anchor:
               selection.anchor < selection.focus
-                ? floor(selection.anchor, props.cellSize)
-                : ceil(selection.anchor, props.cellSize),
+                ? floorSnap(selection.anchor, props.cellSize)
+                : ceilSnap(selection.anchor, props.cellSize),
             focus:
               selection.anchor > selection.focus
-                ? floor(selection.focus, props.cellSize)
-                : ceil(selection.focus, props.cellSize),
+                ? floorSnap(selection.focus, props.cellSize)
+                : ceilSnap(selection.focus, props.cellSize),
           })
         } else if (event.target instanceof HTMLElement) {
           select(event.target, { anchor: 0, focus: props.cellSize })
