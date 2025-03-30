@@ -1,5 +1,5 @@
 import { Repeat } from '@solid-primitives/range'
-import { batch, ComponentProps, JSX, splitProps } from 'solid-js'
+import { batch, ComponentProps, createMemo, JSX, splitProps } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 
 function getNodeAndOffsetAtIndex(element: Node, index: number) {
@@ -121,11 +121,12 @@ export function HexEditor(
     }
   }
 
+  const offsetCharCount = createMemo(() => ceil(props.array.length, 16).toString(16).length)
+
   return (
     <div
       ref={container!}
       style={{
-        padding: '10px',
         overflow: 'auto',
         display: 'grid',
         'grid-template-columns': 'auto 1fr auto',
@@ -134,16 +135,20 @@ export function HexEditor(
       {...rest}
     >
       <div
+        data-grid="offset"
         style={{
           display: 'grid',
           'grid-template-rows': `repeat(${props.array.length / 16}, 1fr)`,
         }}
       >
         <Repeat times={Math.ceil(props.array.length / 16)}>
-          {index => <span>{(index * 16).toString(16).padStart(8, '0')}</span>}
+          {index => (
+            <span data-cell>{(index * 16).toString(16).padStart(offsetCharCount(), '0')}</span>
+          )}
         </Repeat>
       </div>
       <GridEditor
+        name="hex"
         array={props.array}
         onArrayUpdate={props.onArrayUpdate}
         cellSize={2}
@@ -177,6 +182,7 @@ export function HexEditor(
         }}
       />
       <GridEditor
+        name="ascii"
         cellSize={1}
         array={props.array}
         onArrayUpdate={props.onArrayUpdate}
@@ -204,6 +210,7 @@ type GridEventHandler<T> = (
 
 function GridEditor(props: {
   array: Array<number> | Uint8Array
+  name: string
   onArrayUpdate(index: number, value: number): void
   cellSize: number
   render(value: number): string
@@ -304,6 +311,7 @@ function GridEditor(props: {
 
   return (
     <div
+      data-grid={props.name}
       style={{
         display: 'grid',
         'grid-template-columns': 'repeat(16, 1fr)',
@@ -413,7 +421,7 @@ function GridEditor(props: {
     >
       <Repeat times={props.array.length}>
         {index => (
-          <span data-inactive={props.array[index] === 0 ? true : undefined}>
+          <span data-cell data-inactive={props.array[index] === 0 ? '' : undefined}>
             {props.render(props.array[index]!)}
           </span>
         )}
