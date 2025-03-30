@@ -12,10 +12,12 @@
 }
 
 .editor {
+  gap: 20px;
+  padding: 10px;
   font-size: 8pt;
   font-family: monospace;
 
-  & > :first-child {
+  & > [data-grid='offset'] {
     color: darkgrey;
   }
 
@@ -23,7 +25,7 @@
     outline: 2px white;
   }
 
-  & span {
+  & [data-cell] {
     padding: 2px 0px;
   }
 }
