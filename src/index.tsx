@@ -210,21 +210,26 @@ function GridEditor(props: {
   scrollToSelection(): void
   onInsert: GridEventHandler<InputEvent>
 }) {
-  function onArrowLeft(
+  function onArrowHorizontal(
     event: KeyboardEvent & { currentTarget: HTMLDivElement },
     selection: RangeVector,
+    direction: 1 | -1,
   ) {
     if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) - props.cellSize
+      const focus = floor(selection.focus, props.cellSize) + props.cellSize * direction
+
       if (focus === selection.anchor) {
         select(event.currentTarget, {
           anchor: selection.focus,
-          focus: focus - props.cellSize,
+          focus: focus + props.cellSize * direction,
         })
         return
       }
 
-      if (focus >= 0) {
+      const withinBounds =
+        direction === -1 ? focus >= 0 : focus <= props.array.length * props.cellSize
+
+      if (withinBounds) {
         select(event.currentTarget, {
           anchor: selection.anchor,
           focus,
@@ -234,121 +239,69 @@ function GridEditor(props: {
       return
     }
 
-    if (selection.anchor > selection.focus) {
-      const focus = floor(selection.focus, props.cellSize) - props.cellSize
-
-      if (focus >= 0) {
+    if (direction === -1) {
+      const start = floor(selection.start, props.cellSize) - props.cellSize
+      if (start >= 0) {
         select(event.currentTarget, {
-          anchor: focus + props.cellSize,
-          focus,
+          anchor: start,
+          focus: start + props.cellSize,
         })
       }
-      return
-    }
-
-    const anchor = floor(selection.anchor, props.cellSize) - props.cellSize
-    if (anchor >= 0) {
-      select(event.currentTarget, {
-        focus: anchor + props.cellSize,
-        anchor,
-      })
+    } else {
+      const end = floor(selection.end, props.cellSize) + props.cellSize
+      if (end <= props.array.length * props.cellSize) {
+        select(event.currentTarget, {
+          anchor: end - props.cellSize,
+          focus: end,
+        })
+      }
     }
   }
-  function onArrowRight(
+
+  function onArrowVertical(
     event: KeyboardEvent & { currentTarget: HTMLDivElement },
     selection: RangeVector,
+    direction: -1 | 1,
   ) {
     if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) + props.cellSize
-
-      if (focus === selection.anchor) {
-        select(event.currentTarget, {
-          anchor: selection.focus,
-          focus: focus + props.cellSize,
-        })
-        return
-      }
-
-      if (focus <= props.array.length * props.cellSize) {
-        select(event.currentTarget, {
-          anchor: selection.anchor,
-          focus,
-        })
-      }
-
-      return
-    }
-
-    if (selection.anchor < selection.focus) {
-      const focus = floor(selection.focus, props.cellSize) + props.cellSize
-      console.log(focus, selection.anchor)
-      select(event.currentTarget, {
-        anchor: focus - props.cellSize,
-        focus,
-      })
-      return
-    }
-
-    const anchor = floor(selection.anchor, props.cellSize) + props.cellSize
-    if (anchor >= 0) {
-      select(event.currentTarget, {
-        focus: anchor - props.cellSize,
-        anchor,
-      })
-    }
-  }
-  function onArrowUp(
-    event: KeyboardEvent & { currentTarget: HTMLDivElement },
-    selection: RangeVector,
-  ) {
-    if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) - 16 * props.cellSize
+      const focus = floor(selection.focus, props.cellSize) + 16 * props.cellSize * direction
 
       const shouldFlip =
         (selection.anchor < selection.focus && selection.anchor > focus) ||
         (selection.anchor > selection.focus && selection.anchor < focus)
 
-      if (focus <= props.array.length * props.cellSize) {
+      const withinBounds =
+        direction === -1 ? focus >= 0 : focus <= props.array.length * props.cellSize
+
+      if (withinBounds) {
         select(event.currentTarget, {
-          anchor: shouldFlip ? selection.anchor + props.cellSize : selection.anchor,
-          focus: shouldFlip ? focus - props.cellSize : focus,
+          anchor: shouldFlip ? selection.anchor - props.cellSize * direction : selection.anchor,
+          focus: shouldFlip ? focus + props.cellSize * direction : focus,
         })
       }
 
       return
     }
 
-    select(event.currentTarget, {
-      anchor: floor(selection.start - 16 * props.cellSize, props.cellSize),
-      focus: floor(selection.start - 15 * props.cellSize, props.cellSize),
-    })
-  }
-  function onArrowDown(
-    event: KeyboardEvent & { currentTarget: HTMLDivElement },
-    selection: RangeVector,
-  ) {
-    if (event.shiftKey) {
-      const focus = floor(selection.focus, props.cellSize) + 16 * props.cellSize
-
-      const shouldFlip =
-        (selection.anchor < selection.focus && selection.anchor > focus) ||
-        (selection.anchor > selection.focus && selection.anchor < focus)
-
-      if (focus <= props.array.length * props.cellSize) {
+    if (direction === -1) {
+      const anchor = floor(selection.start - 16 * props.cellSize, props.cellSize)
+      if (anchor > 0) {
         select(event.currentTarget, {
-          anchor: shouldFlip ? selection.anchor - props.cellSize : selection.anchor,
-          focus: shouldFlip ? focus + props.cellSize : focus,
+          anchor: anchor,
+          focus: anchor + props.cellSize,
         })
       }
-
-      return
+    } else {
+      const focus = floor(selection.end + 16 * props.cellSize, props.cellSize)
+      if (focus < props.array.length * props.cellSize) {
+        select(event.currentTarget, {
+          anchor: focus - props.cellSize,
+          focus: focus,
+        })
+      }
     }
-
-    select(event.currentTarget, {
-      anchor: floor(selection.end + 15 * props.cellSize, props.cellSize),
-      focus: floor(selection.end + 16 * props.cellSize, props.cellSize),
-    })
   }
+
   return (
     <div
       style={{
@@ -408,25 +361,25 @@ function GridEditor(props: {
         switch (event.code) {
           case 'ArrowLeft': {
             event.preventDefault()
-            onArrowLeft(event, selection)
+            onArrowHorizontal(event, selection, -1)
             props.scrollToSelection()
             break
           }
           case 'ArrowRight': {
             event.preventDefault()
-            onArrowRight(event, selection)
+            onArrowHorizontal(event, selection, 1)
             props.scrollToSelection()
             break
           }
           case 'ArrowUp': {
             event.preventDefault()
-            onArrowUp(event, selection)
+            onArrowVertical(event, selection, -1)
             props.scrollToSelection()
             break
           }
           case 'ArrowDown': {
             event.preventDefault()
-            onArrowDown(event, selection)
+            onArrowVertical(event, selection, 1)
             props.scrollToSelection()
             break
           }
